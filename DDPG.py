@@ -11,26 +11,15 @@ from Environment import *
 import pickle
 import matplotlib.pyplot as plt
 
-ordering_cost = 1
-holding_cost = 0.01
-penalty = 100
-fixed_cost = 80
-
-
-    with open("dataframe.pkl", 'rb') as file:
-        df4 = pickle.load(file)
-
-env = InvOptEnv_unico_produto(9000, 7000, ordering_cost, holding_cost, penalty, fixed_cost, df4, 300)
-
 max_action = 8000
-state_dim = 13
+state_dim = 8
 action_dim = 1
 capacity=1000000
 batch_size=64
-update_iteration=200
+update_iteration=20
 tau=0.001 # tau for soft updating
 gamma=0.99 # discount factor
-directory = './'
+directory = "Agentes/"
 hidden1=20 # hidden layer for actor
 hidden2=64. #hiiden laye for critic
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -42,7 +31,7 @@ class Replay_buffer():
     https://github.com/openai/baselines/blob/master/baselines/deepq/replay_buffer.py
     Expects tuples of (state, next_state, action, reward, done)
     '''
-    def __init__(self, max_size=1000000):
+    def __init__(self, max_size=10000):
         self.storage = []
         self.max_size = max_size
         self.ptr = 0
@@ -73,16 +62,21 @@ class Actor(nn.Module):
     def __init__(self, state_dim, action_dim, max_action):
         super(Actor, self).__init__()
 
-        self.l1 = nn.Linear(state_dim, 400)
-        self.l2 = nn.Linear(400, 300)
-        self.l3 = nn.Linear(300, action_dim)
+        self.l1 = nn.Linear(state_dim, 64)
+        self.l2 = nn.Linear(64, 32)
+        self.l3 = nn.Linear(32, action_dim)
 
         self.max_action = max_action
 
     def forward(self, x):
         x = F.relu(self.l1(x))
         x = F.relu(self.l2(x))
-        x = self.max_action * torch.tanh(self.l3(x))
+
+        # Mapeia a saída diretamente para [0, 1]
+        x = torch.sigmoid(self.l3(x))
+        
+        # Escala para o intervalo [0, max_action]
+        x = self.max_action * x
         return x
 
 
@@ -90,9 +84,9 @@ class Critic(nn.Module):
     def __init__(self, state_dim, action_dim):
         super(Critic, self).__init__()
 
-        self.l1 = nn.Linear(state_dim + action_dim, 400)
-        self.l2 = nn.Linear(400 , 300)
-        self.l3 = nn.Linear(300, 1)
+        self.l1 = nn.Linear(state_dim + action_dim, 256)
+        self.l2 = nn.Linear(256 , 128)
+        self.l3 = nn.Linear(128, 1)
 
     def forward(self, x, u):
         x = F.relu(self.l1(torch.cat([x, u], 1)))
@@ -101,7 +95,7 @@ class Critic(nn.Module):
         return x
     
 
-class DDPG(object):
+class DDPG_CA(object):
     def __init__(self, state_dim, action_dim, max_action):
         self.actor = Actor(state_dim, action_dim, max_action).to(device)
         self.actor_target = Actor(state_dim, action_dim, max_action).to(device)
@@ -169,84 +163,15 @@ class DDPG(object):
             self.num_critic_update_iteration += 1
 
     def save(self):
-        torch.save(self.actor.state_dict(), directory + 'actor.pth')
-        torch.save(self.critic.state_dict(), directory + 'critic.pth')
+        torch.save(self.actor.state_dict(), directory + 'actorDDPG.pth')
+        torch.save(self.critic.state_dict(), directory + 'criticDDPG.pth')
         # print("====================================")
         # print("Model has been saved...")
         # print("====================================")
 
     def load(self):
-        self.actor.load_state_dict(torch.load(directory + 'actor.pth'))
-        self.critic.load_state_dict(torch.load(directory + 'critic.pth'))
+        self.actor.load_state_dict(torch.load(directory + 'actorDDPG.pth'))
+        self.critic.load_state_dict(torch.load(directory + 'criticDDPG.pth'))
         print("====================================")
         print("model has been loaded...")
         print("====================================")
-
-
-def main(modo="train", carregar=False, episodies=1000, exploration_noise=50):
-    scores = []
-    agent = DDPG(state_dim, action_dim, max_action)
-    ep_r = 0
-    if modo == 'test':
-        agent.load()
-        for i in range(100):
-            state = env.reset()
-            for t in count():
-                action = agent.select_action(state)
-                next_state, reward, done, info = env.step(np.float32(action))
-                ep_r += reward
-                env.render()
-                if done or t >= 100:
-                    print("Ep_i \t{}, the ep_r is \t{:0.2f}, the step is \t{}".format(i, ep_r, t))
-                    ep_r = 0
-                    break
-                state = next_state
-
-    elif modo == 'train':
-        if carregar: agent.load()
-        total_step = 0
-        for i in range(episodies):
-            total_reward = 0
-            step =0
-            state = env.reset()
-            for t in count():
-                action = agent.select_action(state)
-
-                if action < 1:
-                  action = (action).clip(env.action_space.low, env.action_space.high)
-                
-                else:
-                  action = (action + np.random.normal(0, exploration_noise, size=env.action_space.shape[0])).clip(
-                    env.action_space.low, env.action_space.high)
-                
-                
-                
-
-                next_state, reward, done, _ = env.step(math.floor(action[0]))
-                agent.replay_buffer.push((state, next_state, action, reward, np.float32(done)))
-
-                state = next_state
-                if done:
-                    break
-                step += 1
-                total_reward += reward
-            total_step += step+1
-            print("Total T:{} Episode: \t{} Total Reward: \t{:0.2f}".format(total_step, i, total_reward))
-            agent.update()
-           # "Total T: %d Episode Num: %d Episode T: %d Reward: %f
-
-            if i % 30 == 0:
-                agent.save()
-            
-            scores.append(total_reward)
-    else:
-        raise NameError("mode wrong!!!")
-    
-    return scores
-
-scores = main()
-
-plt.plot(np.arange(len(scores)),scores)
-plt.ylabel('Reward')
-plt.xlabel('Epsiode #')
-plt.show()

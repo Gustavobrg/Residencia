@@ -1,22 +1,20 @@
 import pickle
 from Environment import *
+
 from dqn_Agent import *
 import numpy as np
 import matplotlib.pyplot as plt
 
-ordering_cost = 1
-holding_cost = 0.01
-penalty = 100
-fixed_cost = 80
 
-
-with open("dataframe.pkl", 'rb') as file:
+with open("dataframe2.pkl", 'rb') as file:
     df4 = pickle.load(file)
 
+df4 = df4[1000:1940].reset_index()
+    
+env = InvOptEnv_unico_produto_dqn(500, 500, df4, 400)
 
-env = InvOptEnv_unico_produto(9000, 7000, ordering_cost, holding_cost, penalty, fixed_cost, df4, 300)
 
-agent = Agent(state_size=13,action_size=100,seed=0)
+agent = Agent(state_size=8,action_size=50,seed=0)
 
 def dqn(env, n_episodes= 1000, max_t = 10000, eps_start=1.0, eps_end = 0.01,
        eps_decay=0.995):
@@ -39,7 +37,7 @@ def dqn(env, n_episodes= 1000, max_t = 10000, eps_start=1.0, eps_end = 0.01,
         score = 0
         for t in range(max_t):
             action = agent.act(state,eps)
-            action = action*100
+            action = action*10
             next_state,reward,done, _ = env.step(action)
             next_state = np.array(next_state)
             agent.step(state,action/100,reward,next_state,done)
@@ -58,7 +56,7 @@ def dqn(env, n_episodes= 1000, max_t = 10000, eps_start=1.0, eps_end = 0.01,
     return scores
 
 scores = dqn(env)
-torch.save(agent.qnetwork_local.state_dict(), "agent2.pt")
+torch.save(agent.qnetwork_local.state_dict(), "Agentes/agentDQN.pt")
 
 
 plt.plot(np.arange(len(scores)),scores)
