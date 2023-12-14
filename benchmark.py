@@ -127,9 +127,9 @@ def test_policy_sS():
     state = env.state
     i = 0
     while i<100:
-        if env.Nivel_estoque <= 250:
+        if env.Nivel_estoque <= 350:
             if env.Em_entrega == 0:
-                action = 250
+                action = 400
             else:
                 action = 0
         else:
